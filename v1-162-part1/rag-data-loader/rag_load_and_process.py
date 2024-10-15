@@ -7,7 +7,7 @@ from langchain_community.document_loaders import DirectoryLoader, UnstructuredPD
 from langchain_postgres import PGVector
 from langchain_postgres.vectorstores import PGVector
 from langchain_postgres.vectorstores import DistanceStrategy
-from langchain_experimental.text_splitter import SemanticChunker
+from langchain.text_splitter import RecursiveCharacterTextSplitter
 # from langchain_openai import OpenAIEmbeddings
 from langchain_huggingface import HuggingFaceEmbeddings
 from sqlalchemy import create_engine, text
@@ -20,7 +20,8 @@ load_dotenv()
 embedding_model = "sentence-transformers/all-mpnet-base-v2"
 
 # Configurar el dispositivo
-device = "mps" if torch.backends.mps.is_available() else "cpu"
+# device = "mps" if torch.backends.mps.is_available() else "cpu"
+device = "cpu"
 
 # Configurar el modelo de embeddings
 embeddings = HuggingFaceEmbeddings(
@@ -43,21 +44,17 @@ docs = loader.load()
 # print(f"page_content: {docs[0].page_content}")
 # print(f"metadata: {docs[0].metadata}")
 
-text_splitter = SemanticChunker(
-    embeddings=embeddings,
-    # Cortar los textos cada salto de linea
-    sentence_split_regex = r"(?<!\w\.\w.)(?<![A-Z][a-z]\.)(?<=\.|\?)\s",
+# Dividir documentos en chunks más pequeños
+text_splitter = RecursiveCharacterTextSplitter(
+    separators=["\n\n", "\n"],
+    chunk_size=500,
+    chunk_overlap=50,
+    length_function=len
 )
-print(f"Text splitter: {text_splitter}")
-print(f"page_content: {docs[0].page_content}")
 
-# docs = text_splitter.create_documents(docs)
-# print(f"Documentos procesados: {len(docs)}")
-# print(f"page_content: {docs[0].page_content}")
+chunks = text_splitter.split_documents(docs)
 
-# flattened_docs = [doc[0] for doc in docs if doc]
-# chunks = text_splitter.split_documents(flattened_docs)
-# print(f"Documentos procesados: {len(chunks)}")
+print(f"Número de chunks creados: {len(chunks)}")
 
 
 # Configuración de la base de datos
@@ -125,8 +122,8 @@ def recreate_embeddings(force_recreate=False):
             print("Recreando embeddings...")
 
             # Cargar los documentos en la base de datos
-            vector_store.add_documents(documents=docs, ids=[str(uuid.uuid4()) for _ in docs])
-            print(f"Documentos procesados: {len(docs)}")
+            vector_store.add_documents(documents=chunks, ids=[str(uuid.uuid4()) for _ in chunks])
+            print(f"Documentos procesados: {len(chunks)}")
         else:
             print("Embeddings ya existen.")
     except Exception as e:
